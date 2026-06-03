@@ -6,6 +6,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-02
+
+Aggregator layer of the JSONL rewrite (epic `bd-timew-nfr`). Internal/library —
+not yet wired into the CLI (the cutover is the next layer).
+
+### Added
+
+- **Aggregator + reports** (`bd_timew.aggregate`) — full-walk reader over the
+  per-session JSONL log: pairs intervals by ULID, folds `correction`s
+  (per-field latest-wins by `eid`), drops `cancel`led, surfaces open/stale
+  intervals (excluded from totals). Flat aggregation policy
+  (partition/collapse over `group_id`/`actor`/`role`/`session`) with built-in
+  `machine` / `wallclock` / `billing` modes; `report(group_by=…)` groups closed
+  intervals by bead / session / actor / role / group_id / billing-tag key.
+  Malformed lines are skipped-and-reported. Hierarchical subtotals
+  (`bd-timew-an7`) and an incremental summary cache (`bd-timew-wav`) are
+  deferred follow-ups.
+
 ## [0.3.0] - 2026-06-02
 
 First milestone of the timew → JSONL backend rewrite (epic `bd-timew-nfr`):
