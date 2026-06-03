@@ -20,3 +20,9 @@ venv/
 
 # bv (beads viewer) local config and caches
 .bv/
+
+# direnv
+.envrc
+
+# mise
+mise.local.toml
