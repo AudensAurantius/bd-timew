@@ -54,9 +54,14 @@ Key invariants (tested in `tests/test_track.py`, `tests/test_compat.py`):
   stop halts ALL sessions" danger notes — that bug is fixed); add a dated migration PSA
   to global CLAUDE.md. PSA decision: **alias stderr-warning is primary; no blocking
   hook** during transition. Edit chezmoi SOURCE then `chezmoi apply` — never `cp`.
-- **`bd-timew-7bh`** (P2, in-repo, **autonomous-eligible, suggested next**) — update
-  project docs for the JSONL rewrite + bd-track rename (README, CHANGELOG, CLI help,
-  docs/). Note the now-shipped `migrate rename`/`migrate import` subcommands.
+- **`bd-timew-7bh`** ✓ — in-repo docs pass: README rewritten around the JSONL
+  backend + `bd-track` rename (per-session log model, storage/fallback, new
+  `active`/`report`/`session`/`migrate` commands, timew dep dropped); CHANGELOG
+  moved shipped `migrate rename`/`import` into `[Unreleased]` + added 0.3.0–0.5.0
+  compare links; `cli.py` migrate help text updated to mention `import`. AGENTS.md
+  needed no change (generic bd/bv guidance, no tool refs). Skill docs
+  (time-tracking/work-queue) are chezmoi-managed → folded into **`bd-timew-4g4`**
+  (operator-blocked), not 7bh.
 - **`bd-timew-qny`** (P2) — generalize billing config to arbitrary tuple shapes (own
   design pass needed).
 
