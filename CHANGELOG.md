@@ -1,10 +1,51 @@
 # Changelog
 
-All notable changes to bd-timew are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to bd-track (formerly `bd-timew`) are documented here. The
+format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.5.0] - 2026-06-03
+
+The cutover: the CLI is re-wired off Timewarrior onto the JSONL event log, and
+the package is renamed **`bd-timew` → `bd-track`** (epic `bd-timew-nfr`,
+bead `bd-timew-9hn`). This resolves the originating bug — concurrent sessions
+clobbering each other's single global timew interval — structurally: there is
+no shared active interval, and a session can only ever close an interval ULID
+in its own per-session log.
+
+### Changed
+
+- **BREAKING — package + executable renamed to `bd-track`.** The Python module
+  is `bd_track`; the command is `bd-track`. A deprecated **`bd-timew` alias**
+  remains (prints a stderr warning, then dispatches) so existing wrappers and
+  `.envrc` callers keep working through the transition. Env vars are now
+  `BD_TRACK_*` (legacy `BD_TIMEW_*` still read); the sidecar is
+  `.beads/bd-track.yaml` (legacy `.beads/bd-timew.yaml` still read); state
+  lives under `~/.config|cache|state/bd-track` and `<beads>/bd-track/sessions/`
+  (legacy locations still read when the new ones are absent). Run
+  `bd-track migrate rename` to migrate naming in place (forthcoming —
+  `bd-timew-jy9`). The bd **issue prefix** `bd-timew-` is unchanged.
+- **`start`/`stop`/`switch`/`status` re-wired onto the JSONL backend.** No
+  Timewarrior dependency remains (removed from `install.sh`). `start` resolves
+  the billing tuple, appends a `start` event (bead + flat tags + provenance),
+  and claims the bead; it ends **this session's own** open interval first
+  (single-active-per-session) but never another session's. `stop` closes this
+  session's open interval(s); a no-argument `stop` can no longer halt other
+  sessions. `status` shows this session's interval(s) and a count of other
+  active sessions.
+
+### Added
+
+- **`bd-track active`** — lists all open intervals across **all** sessions (the
+  concurrent-tracking view the timew backend structurally could not provide).
+- **`bd-track report`** — aggregates closed intervals via `bd_track.aggregate`:
+  `--by <bead|session|actor|role|group_id|tag-key>`, `--policy
+  billing|machine|wallclock`, `--since/--until`. Open/stale intervals are
+  excluded from totals and surfaced separately.
+- **`--session-id`** now threads through every command, not just
+  `session current`.
 
 ## [0.4.0] - 2026-06-02
 
