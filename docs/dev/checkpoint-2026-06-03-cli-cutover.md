@@ -28,22 +28,37 @@ Key invariants (tested in `tests/test_track.py`, `tests/test_compat.py`):
 - **deprecated `bd-timew` alias** (`cli.main_deprecated`) warns to stderr then
   dispatches, so existing wrappers/.envrc keep working until migration.
 
-## Next — `refactor` queue: `73v`, `jy9`, `4g4`
+## Next — `refactor` queue
 
-- **`bd-timew-jy9`** (P1, in-repo) — `bd-track migrate rename` subcommand: rename
-  sidecar, migrate `~/.config|cache|state/bd-timew` + `<beads>/bd-timew/sessions`,
-  rewrite `BD_TIMEW_*`→`BD_TRACK_*` in `.envrc`/`.env`/`.envrc.local`/`mise.toml`.
-  **Dry-run by default**; **skip+warn on chezmoi-managed files** (don't desync source).
-  Leaves the `migrate` namespace open for 73v.
-- **`bd-timew-4g4`** (P2, **chezmoi repo**) — rename `bd-timew`→`bd-track` + fix stale
-  "Timewarrior" wording across `/start /stop /status /switch /work-queue /time-report`
-  + the time-tracking/work-queue/auto-session/beads-migration/python-scripting skills;
-  update wrappers for per-session model (DELETE the obsolete "no-arg stop halts ALL
-  sessions" danger notes — that bug is fixed); add a dated migration PSA to global
-  CLAUDE.md. PSA decision: **alias stderr-warning is primary; no blocking hook**
-  during transition (would break wrappers still emitting bd-timew). Edit chezmoi
-  SOURCE then `chezmoi apply` — never `cp`.
-- **`bd-timew-73v`** (after jy9) — import existing timew export → JSONL.
+**DONE (this session, 2026-06-03 late):** both in-repo head candidates landed in
+`src/bd_track/migrate.py` (the `bd-track migrate` namespace), pushed to `main`.
+
+- **`bd-timew-jy9`** ✓ — `bd-track migrate rename`: global dirs + `.beads` sidecar +
+  `<beads>/bd-timew` session logs + `BD_TIMEW_*`→`BD_TRACK_*` env rewrites. Dry-run
+  default; `--apply`, `--all-repos` (sweeps `repos.yaml`), `--no-backup`; chezmoi-
+  guarded on home/dotfile targets; idempotent.
+- **`bd-timew-73v`** ✓ — `bd-track migrate import`: replays `timew export` → JSONL,
+  historical `ts` preserved, skips open + bead-less intervals, idempotent by
+  content-hash `import_key`, `--from-file` override. **Real data imported** on this
+  machine (138 intervals) into the isolated `imported-timew` session log — gitignored
+  (see `.beads/.gitignore`: dev-repo logs carry real client tags, kept local-only).
+  Tests: `tests/test_migrate.py` (30 tests, incl. aggregator round-trip). Suite 163✓.
+
+**REMAINING:**
+- **`bd-timew-ive`** (P2, **operator-only**) — rename GitHub repo + local source dir to
+  `bd-track`, reinstall via pipx. Manual; **blocks 4g4**.
+- **`bd-timew-4g4`** (P2, **chezmoi repo**, blocked by ive) — rename `bd-timew`→`bd-track`
+  + fix stale "Timewarrior" wording across `/start /stop /status /switch /work-queue
+  /time-report` + the time-tracking/work-queue/auto-session/beads-migration/python-
+  scripting skills; update wrappers for per-session model (DELETE the obsolete "no-arg
+  stop halts ALL sessions" danger notes — that bug is fixed); add a dated migration PSA
+  to global CLAUDE.md. PSA decision: **alias stderr-warning is primary; no blocking
+  hook** during transition. Edit chezmoi SOURCE then `chezmoi apply` — never `cp`.
+- **`bd-timew-7bh`** (P2, in-repo, **autonomous-eligible, suggested next**) — update
+  project docs for the JSONL rewrite + bd-track rename (README, CHANGELOG, CLI help,
+  docs/). Note the now-shipped `migrate rename`/`migrate import` subcommands.
+- **`bd-timew-qny`** (P2) — generalize billing config to arbitrary tuple shapes (own
+  design pass needed).
 
 ## Open decisions for the operator
 
