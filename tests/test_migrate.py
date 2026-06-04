@@ -1,19 +1,26 @@
-"""Tests for `bd-track migrate rename` (bd-timew-jy9).
+"""Tests for `bd-track migrate` — rename (bd-timew-jy9) + import (bd-timew-73v).
 
-The one-way bd-timew → bd-track on-disk migration: global dirs, the per-project
-.beads sidecar + session logs, and BD_TIMEW_* env-var rewrites. Dry-run by
-default, chezmoi-managed targets skipped, idempotent on re-run.
+rename: one-way bd-timew → bd-track on-disk migration (global dirs, the
+per-project .beads sidecar + session logs, BD_TIMEW_* env-var rewrites).
+import: replay a Timewarrior export into the JSONL log, preserving historical
+timestamps, skipping open + bead-less intervals, idempotent by content hash.
+Both are dry-run by default.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from bd_track import migrate
 from bd_track.migrate import (
+    _import_key,
     _is_managed,
     _plan_env,
     _plan_move,
+    _split_bead_tags,
+    _timew_ts_to_iso,
+    cmd_migrate_import,
     cmd_migrate_rename,
 )
 
@@ -229,3 +236,125 @@ def test_all_repos_sweeps_registry(tmp_path, monkeypatch):
 
     assert (r1 / ".beads" / "bd-track.yaml").exists()
     assert (r2 / ".beads" / "bd-track.yaml").exists()
+
+
+# ===========================================================================
+# migrate import (bd-timew-73v)
+# ===========================================================================
+
+# Helpers ------------------------------------------------------------------
+
+def test_timew_ts_to_iso():
+    assert _timew_ts_to_iso("20260419T021551Z") == "2026-04-19T02:15:51+00:00"
+
+
+def test_split_bead_tags_normal():
+    bead, tags = _split_bead_tags(
+        ["J121-dbo", "client:personal", "case:area:claude", "svc:none"])
+    assert bead == "J121-dbo"
+    assert tags == ["client:personal", "case:area:claude", "svc:none"]
+
+
+def test_split_bead_tags_no_bead():
+    bead, tags = _split_bead_tags(["billable:false", "client:personal"])
+    assert bead is None
+    assert tags == ["billable:false", "client:personal"]
+
+
+def test_import_key_stable_and_order_independent():
+    k1 = _import_key("S", "E", "bead-1", ["b:2", "a:1"])
+    k2 = _import_key("S", "E", "bead-1", ["a:1", "b:2"])  # tag order swapped
+    k3 = _import_key("S", "E", "bead-2", ["a:1", "b:2"])  # different bead
+    assert k1 == k2
+    assert k1 != k3
+
+
+# Fixture export -----------------------------------------------------------
+
+_EXPORT = [
+    # closed, bead-tagged → imported
+    {"id": 3, "start": "20260419T010000Z", "end": "20260419T020000Z",
+     "tags": ["bead-aaa", "client:acme", "case:x"]},
+    # closed, bead-tagged → imported (2h)
+    {"id": 2, "start": "20260420T000000Z", "end": "20260420T020000Z",
+     "tags": ["bead-bbb", "billable:false"]},
+    # bead-less → skipped
+    {"id": 1, "start": "20260421T000000Z", "end": "20260421T003000Z",
+     "tags": ["billable:false"]},
+    # open (no end) → skipped
+    {"id": 0, "start": "20260422T000000Z", "tags": ["bead-ccc"]},
+]
+
+
+def _write_export(tmp_path) -> Path:
+    f = tmp_path / "export.json"
+    f.write_text(json.dumps(_EXPORT))
+    return f
+
+
+def _make_beads(tmp_path) -> Path:
+    proj = tmp_path / "proj"
+    (proj / ".beads").mkdir(parents=True)
+    return proj
+
+
+def _read_import_log(proj) -> list[dict]:
+    log = proj / ".beads" / "bd-track" / "sessions" / "imported-timew.jsonl"
+    if not log.exists():
+        return []
+    return [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
+
+
+# Behaviour ----------------------------------------------------------------
+
+def test_import_dry_run_writes_nothing(tmp_path, capsys):
+    proj = _make_beads(tmp_path)
+    cmd_migrate_import(project_dir=proj, from_file=_write_export(tmp_path), apply=False)
+
+    assert _read_import_log(proj) == []
+    out = capsys.readouterr().out
+    assert "DRY RUN" in out
+    assert "import: 2" in out and "skip(open): 1" in out and "skip(no-bead): 1" in out
+
+
+def test_import_apply_writes_paired_events(tmp_path):
+    proj = _make_beads(tmp_path)
+    cmd_migrate_import(project_dir=proj, from_file=_write_export(tmp_path), apply=True)
+
+    events = _read_import_log(proj)
+    starts = [e for e in events if e["event"] == "start"]
+    stops = [e for e in events if e["event"] == "stop"]
+    assert len(starts) == 2 and len(stops) == 2
+    # Historical ts preserved; bead/tags split correctly; provenance marked.
+    s0 = next(e for e in starts if e["bead"] == "bead-aaa")
+    assert s0["ts"] == "2026-04-19T01:00:00+00:00"
+    assert s0["tags"] == ["client:acme", "case:x"]
+    assert s0["source"] == "timew" and s0["import_key"]
+
+
+def test_import_round_trips_through_aggregator(tmp_path):
+    """Imported events fold to the correct historical durations."""
+    from bd_track.aggregate import load_intervals
+    from bd_track.events import log_dir
+
+    proj = _make_beads(tmp_path)
+    cmd_migrate_import(project_dir=proj, from_file=_write_export(tmp_path), apply=True)
+
+    intervals = {iv.bead: iv for iv in load_intervals(log_dir(proj))}
+    assert set(intervals) == {"bead-aaa", "bead-bbb"}
+    assert intervals["bead-aaa"].duration.total_seconds() == 3600  # 1h
+    assert intervals["bead-bbb"].duration.total_seconds() == 7200  # 2h
+    assert all(iv.status == "closed" for iv in intervals.values())
+
+
+def test_import_idempotent_rerun(tmp_path):
+    proj = _make_beads(tmp_path)
+    export = _write_export(tmp_path)
+
+    cmd_migrate_import(project_dir=proj, from_file=export, apply=True)
+    first = len(_read_import_log(proj))
+    cmd_migrate_import(project_dir=proj, from_file=export, apply=True)
+    second = len(_read_import_log(proj))
+
+    assert first == second == 4  # 2 intervals x (start+stop); re-run added nothing
+

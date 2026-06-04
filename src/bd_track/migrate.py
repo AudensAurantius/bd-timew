@@ -21,6 +21,9 @@ chezmoi target desyncs its source — use ``chezmoi apply`` for those). The
 from __future__ import annotations
 
 import dataclasses
+import datetime as dt
+import hashlib
+import json
 import shutil
 from pathlib import Path
 
@@ -250,3 +253,140 @@ def cmd_migrate_rename(
     for action in todo:
         _execute(action, backup=backup)
     print(f"\nMigrated {len(todo)} item(s).")
+
+
+# ===========================================================================
+# migrate import — one-shot timew export → JSONL event log (bd-timew-73v)
+# ===========================================================================
+#
+# Reads a Timewarrior interval export and replays each closed, bead-tagged
+# interval as a start+stop event pair in the JSONL log, preserving the
+# *historical* start/stop timestamps (written into each event's ``ts``, which
+# the aggregator folds directly into interval timing). Open intervals and
+# bead-less intervals are skipped (design decision). Idempotent: each interval
+# carries a deterministic ``import_key`` so a re-run skips already-imported
+# rows. Imported events land in a dedicated ``imported-timew`` session log so
+# they are isolated and identifiable.
+
+_IMPORT_SESSION = "imported-timew"
+
+
+def _timew_ts_to_iso(stamp: str) -> str:
+    """Convert a Timewarrior UTC stamp (``20260419T021551Z``) to ISO-8601."""
+    parsed = dt.datetime.strptime(stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=dt.timezone.utc)
+    return parsed.isoformat()
+
+
+def _split_bead_tags(tags: list[str]) -> tuple[str | None, list[str]]:
+    """Separate the bead (the lone colonless tag) from the key:value billing tags."""
+    colonless = [t for t in tags if ":" not in t]
+    if not colonless:
+        return None, list(tags)
+    bead = colonless[0]
+    return bead, [t for t in tags if t != bead]
+
+
+def _import_key(start: str, end: str, bead: str, tags: list[str]) -> str:
+    """Deterministic per-interval key for idempotent re-runs (timew ids are unstable)."""
+    payload = f"{start}|{end}|{bead}|{','.join(sorted(tags))}"
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _load_timew(from_file: Path | None) -> list[dict]:
+    """Load the timew export from a file, or by shelling out to ``timew export``."""
+    if from_file is not None:
+        return json.loads(from_file.read_text())
+    if shutil.which("timew") is None:
+        raise SystemExit(
+            "bd-track: timew not found on PATH; pass --from-file <export.json>."
+        )
+    res = run(["timew", "export"], check=False, capture=True)
+    if res.returncode != 0:
+        raise SystemExit("bd-track: `timew export` failed; pass --from-file instead.")
+    return json.loads(res.stdout)
+
+
+def _existing_import_keys(log_path: Path) -> set[str]:
+    """Collect import_key values already present in the import session log."""
+    if not log_path.exists():
+        return set()
+    keys: set[str] = set()
+    for line in log_path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("event") == "start" and ev.get("import_key"):
+            keys.add(ev["import_key"])
+    return keys
+
+
+def cmd_migrate_import(
+    *,
+    project_dir: Path | None = None,
+    from_file: Path | None = None,
+    apply: bool = False,
+) -> None:
+    """Import timew intervals into the JSONL log. Dry-run unless ``apply``."""
+    from ulid import ULID
+
+    from bd_track.events import SCHEMA_VERSION, _session_log_path
+
+    intervals = _load_timew(from_file)
+    log_path = _session_log_path(_IMPORT_SESSION, project_dir)
+    already = _existing_import_keys(log_path)
+
+    planned: list[dict] = []  # event dicts to append (start then stop, in order)
+    n_import = n_open = n_nobead = n_dup = 0
+
+    for iv in intervals:
+        start_raw, end_raw = iv.get("start"), iv.get("end")
+        if not end_raw:  # open interval — skip (design decision)
+            n_open += 1
+            continue
+        bead, tags = _split_bead_tags(iv.get("tags", []))
+        if bead is None:  # no bead tag — skip (design decision)
+            n_nobead += 1
+            continue
+        key = _import_key(start_raw, end_raw, bead, tags)
+        if key in already:
+            n_dup += 1
+            continue
+        already.add(key)  # guard against intra-run duplicates too
+        n_import += 1
+
+        start_iso, stop_iso = _timew_ts_to_iso(start_raw), _timew_ts_to_iso(end_raw)
+        interval_id = str(ULID())
+        # eids minted in order so the start sorts before the stop on fold.
+        planned.append({
+            "v": SCHEMA_VERSION, "eid": str(ULID()), "event": "start",
+            "interval": interval_id, "session_id": _IMPORT_SESSION, "ts": start_iso,
+            "bead": bead, "tags": tags, "group_id": None, "actor": None, "role": None,
+            "source": "timew", "import_key": key,
+        })
+        planned.append({
+            "v": SCHEMA_VERSION, "eid": str(ULID()), "event": "stop",
+            "interval": interval_id, "session_id": _IMPORT_SESSION, "ts": stop_iso,
+        })
+
+    mode = "APPLYING" if apply else "DRY RUN (pass --apply to import)"
+    print(f"bd-track migrate import — {mode}")
+    print(f"  source: {from_file if from_file else 'timew export'}")
+    print(f"  log:    {log_path}")
+    print(f"  import: {n_import}   skip(open): {n_open}   "
+          f"skip(no-bead): {n_nobead}   skip(already-imported): {n_dup}")
+
+    if not apply:
+        print(f"\n{n_import} interval(s) would be imported. Re-run with --apply.")
+        return
+    if not planned:
+        print("\nNothing to import.")
+        return
+
+    from bd_track.events import append_event
+    for event in planned:
+        append_event(event, session_id=_IMPORT_SESSION, project_dir=project_dir)
+    print(f"\nImported {n_import} interval(s) into {log_path}.")

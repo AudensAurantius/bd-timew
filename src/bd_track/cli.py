@@ -458,6 +458,31 @@ def get_cli_arguments() -> argparse.Namespace:
         help="Skip the per-file .bak backup before rewriting env files.",
     )
 
+    p_migrate_import = p_migrate_sub.add_parser(
+        "import",
+        help="Import existing Timewarrior intervals into the JSONL log (dry-run by default).",
+        description=(
+            "One-shot: read a Timewarrior export and replay each closed, bead-tagged "
+            "interval as a start+stop event pair, preserving the historical "
+            "timestamps. Open and bead-less intervals are skipped. Idempotent — a "
+            "re-run skips already-imported intervals. Dry-run by default. Imported "
+            "events land in a dedicated 'imported-timew' session log."
+        ),
+        formatter_class=HelpFormatter,
+    )
+    p_migrate_import.add_argument(
+        "--project-dir", type=Path, default=None,
+        help="Project root containing .beads/. Defaults to active workspace.",
+    )
+    p_migrate_import.add_argument(
+        "--from-file", type=Path, default=None,
+        help="Read a saved `timew export` JSON file instead of invoking timew.",
+    )
+    p_migrate_import.add_argument(
+        "--apply", action="store_true", default=False,
+        help="Perform the import (default is a dry-run preview).",
+    )
+
     # -- queue (parent) + push/unshift/pop/peek/list/remove/clear/clean/generate/prune
     _add_queue_parsers(sub)
 
@@ -604,6 +629,12 @@ def main() -> None:
             cmd_migrate_rename(
                 project_dir=args.project_dir, all_repos=args.all_repos,
                 apply=args.apply, backup=args.backup,
+            )
+        elif args.migrate_action == "import":
+            from bd_track.migrate import cmd_migrate_import
+            cmd_migrate_import(
+                project_dir=args.project_dir, from_file=args.from_file,
+                apply=args.apply,
             )
     elif args.cmd == "queue":
         _dispatch_queue(args)
