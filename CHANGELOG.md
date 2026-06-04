@@ -6,6 +6,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`bd-track migrate rename`** (`bd-timew-jy9`) — one-way, in-place rename of
+  legacy on-disk artifacts so the read-fallback shims stop firing: the
+  config/cache/state dirs, the `.beads` sidecar, the `<beads>/bd-timew` session
+  logs, and `BD_TIMEW_*` → `BD_TRACK_*` env rewrites. Dry-run by default
+  (`--apply` to write); `--all-repos` sweeps `repos.yaml`; `--no-backup`;
+  chezmoi-guarded on home/dotfile targets; idempotent.
+- **`bd-track migrate import`** (`bd-timew-73v`) — replays `timew export` into the
+  JSONL log, preserving historical timestamps, skipping open and bead-less
+  intervals, idempotent by content-hash `import_key`. `--from-file` imports from a
+  saved export instead of invoking `timew`. Dry-run by default (`--apply` to write).
+
+### Docs
+
+- README rewritten for the JSONL backend and `bd-track` rename; CHANGELOG and CLI
+  help brought current with the shipped `migrate` subcommands (`bd-timew-7bh`).
+
 ## [0.5.0] - 2026-06-03
 
 The cutover: the CLI is re-wired off Timewarrior onto the JSONL event log, and
@@ -25,8 +43,8 @@ in its own per-session log.
   `.beads/bd-track.yaml` (legacy `.beads/bd-timew.yaml` still read); state
   lives under `~/.config|cache|state/bd-track` and `<beads>/bd-track/sessions/`
   (legacy locations still read when the new ones are absent). Run
-  `bd-track migrate rename` to migrate naming in place (forthcoming —
-  `bd-timew-jy9`). The bd **issue prefix** `bd-timew-` is unchanged.
+  `bd-track migrate rename` to migrate naming in place (see below). The bd
+  **issue prefix** `bd-timew-` is unchanged.
 - **`start`/`stop`/`switch`/`status` re-wired onto the JSONL backend.** No
   Timewarrior dependency remains (removed from `install.sh`). `start` resolves
   the billing tuple, appends a `start` event (bead + flat tags + provenance),
@@ -186,6 +204,9 @@ time-tracking workflow into a multi-module Python package.
   v0.2.0.
 - systemd user units for cleanup and idle-stop timers.
 
-[Unreleased]: https://github.com/AudensAurantius/bd-timew/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/AudensAurantius/bd-timew/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/AudensAurantius/bd-timew/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/AudensAurantius/bd-timew/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/AudensAurantius/bd-timew/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/AudensAurantius/bd-timew/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/AudensAurantius/bd-timew/releases/tag/v0.1.0
