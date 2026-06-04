@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import logging
 import logging.handlers
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,13 +23,45 @@ from rich.prompt import Confirm, Prompt
 from rich_argparse import RawDescriptionRichHelpFormatter
 
 # ---------------------------------------------------------------------------
+# bd-timew → bd-track back-compat shims
+#
+# The rename keeps old-name on-disk artifacts and env vars readable so an
+# upgraded bd-track keeps working on a project still laid out for bd-timew
+# (e.g. a live sidecar / .envrc). `bd-track migrate rename` performs the
+# one-way cleanup; these shims cover the interim. Prefer the new name; fall
+# back to the legacy one only when the new one is absent.
+# ---------------------------------------------------------------------------
+
+def env_compat(name: str, default: str | None = None) -> str | None:
+    """Read ``BD_TRACK_*`` env var, falling back to the legacy ``BD_TIMEW_*``."""
+    val = os.environ.get(name)
+    if val is not None:
+        return val
+    if name.startswith("BD_TRACK_"):
+        val = os.environ.get("BD_TIMEW_" + name[len("BD_TRACK_"):])
+        if val is not None:
+            return val
+    return default
+
+
+def path_compat(new: Path, old: Path) -> Path:
+    """Prefer ``new``; fall back to ``old`` only if it exists and ``new`` does not."""
+    return old if (old.exists() and not new.exists()) else new
+
+
+# ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-REPOS_CONFIG = Path.home() / ".config" / "bd-track" / "repos.yaml"
-CLEANUP_STATE = Path.home() / ".cache" / "bd-track" / "cleanup-state.json"
-CLEANUP_LOG = Path.home() / ".cache" / "bd-track" / "cleanup.log"
-ACTIVITY_STATE = Path.home() / ".cache" / "bd-track" / "activity-state.json"
+_CONFIG_DIR = path_compat(Path.home() / ".config" / "bd-track",
+                          Path.home() / ".config" / "bd-timew")
+_CACHE_DIR = path_compat(Path.home() / ".cache" / "bd-track",
+                         Path.home() / ".cache" / "bd-timew")
+
+REPOS_CONFIG = _CONFIG_DIR / "repos.yaml"
+CLEANUP_STATE = _CACHE_DIR / "cleanup-state.json"
+CLEANUP_LOG = _CACHE_DIR / "cleanup.log"
+ACTIVITY_STATE = _CACHE_DIR / "activity-state.json"
 QUEUE_FILE = "queue.yaml"
 
 SYSTEMD_CLEANUP_NAME = "bd-track-cleanup"

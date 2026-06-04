@@ -33,7 +33,7 @@ from pathlib import Path
 from ulid import ULID
 
 from bd_track.session import project_id
-from bd_track.util import find_beads_dir, root_log
+from bd_track.util import env_compat, find_beads_dir, path_compat, root_log
 
 SCHEMA_VERSION = 1
 
@@ -49,6 +49,10 @@ PIPE_BUF = 4096
 # ~/.cache — billing data is not disposable; and distinct from session.py's
 # ~/.local/state pointer, which is machine-local operational state).
 LOG_FALLBACK_DIR = Path.home() / ".local" / "share" / "bd-track"
+# Legacy fallback dir + log subdir; read by path_compat so an un-migrated
+# project keeps logging to (and reading from) its original location until
+# `bd-track migrate rename` moves it. See env_compat/path_compat in util.py.
+_LEGACY_FALLBACK_DIR = Path.home() / ".local" / "share" / "bd-timew"
 
 VALID_EVENTS = ("start", "stop", "cancel", "correction")
 
@@ -79,9 +83,12 @@ def log_dir(project_dir: Path | None = None) -> Path:
     except SystemExit:
         beads_dir = None
     if beads_dir is not None and Path(beads_dir).is_dir():
-        return Path(beads_dir) / "bd-track" / "sessions"
+        bd = Path(beads_dir)
+        return path_compat(bd / "bd-track" / "sessions", bd / "bd-timew" / "sessions")
     root = Path(project_dir) if project_dir else Path.cwd()
-    return LOG_FALLBACK_DIR / project_id(root) / "sessions"
+    pid = project_id(root)
+    return path_compat(LOG_FALLBACK_DIR / pid / "sessions",
+                       _LEGACY_FALLBACK_DIR / pid / "sessions")
 
 
 def _session_log_path(session_id: str, project_dir: Path | None = None) -> Path:
@@ -189,7 +196,7 @@ def resolve_provenance(
 ) -> dict:
     """Source provenance: explicit arg → env → (actor only) inference; else null."""
     return {
-        "group_id": group_id or os.environ.get("BD_TRACK_GROUP_ID") or None,
-        "actor": actor or os.environ.get("BD_TRACK_ACTOR") or _infer_actor(),
-        "role": role or os.environ.get("BD_TRACK_ROLE") or None,
+        "group_id": group_id or env_compat("BD_TRACK_GROUP_ID") or None,
+        "actor": actor or env_compat("BD_TRACK_ACTOR") or _infer_actor(),
+        "role": role or env_compat("BD_TRACK_ROLE") or None,
     }

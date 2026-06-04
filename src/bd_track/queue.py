@@ -18,7 +18,6 @@ notes) are documented in DESIGN_NOTES.md but not yet implemented.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -28,6 +27,7 @@ from bd_track.billing import get_issue
 from bd_track.util import (
     QUEUE_FILE,
     confirm,
+    env_compat,
     find_beads_dir,
     is_interactive,
     root_log,
@@ -62,7 +62,7 @@ def resolve_scope(scope_arg: str | None) -> str:
     """
     if scope_arg is not None:
         return scope_arg
-    env_scope = os.environ.get("BD_TRACK_SCOPE", "").strip()
+    env_scope = (env_compat("BD_TRACK_SCOPE") or "").strip()
     return env_scope if env_scope else "default"
 
 
@@ -106,7 +106,7 @@ def cmd_queue(
     their own ``cmd_*`` functions because their parameter shapes diverge.
     """
     beads_dir = find_beads_dir(project_dir)
-    explicit_scope = scope_arg is not None or bool(os.environ.get("BD_TRACK_SCOPE", "").strip())
+    explicit_scope = scope_arg is not None or bool((env_compat("BD_TRACK_SCOPE") or "").strip())
     scope = resolve_scope(scope_arg)
     all_queues = load_all_queues(beads_dir)
 
@@ -230,7 +230,7 @@ def cmd_clean(
     Returns the number of entries removed across all scopes.
     """
     beads_dir = find_beads_dir(project_dir)
-    explicit_scope = scope_arg is not None or bool(os.environ.get("BD_TRACK_SCOPE", "").strip())
+    explicit_scope = scope_arg is not None or bool((env_compat("BD_TRACK_SCOPE") or "").strip())
     all_queues = load_all_queues(beads_dir)
 
     if not all_queues:
@@ -518,7 +518,7 @@ def cmd_prune(
     confirmation before any removals.
     """
     beads_dir = find_beads_dir(project_dir)
-    explicit_scope = scope_arg is not None or bool(os.environ.get("BD_TRACK_SCOPE", "").strip())
+    explicit_scope = scope_arg is not None or bool((env_compat("BD_TRACK_SCOPE") or "").strip())
     all_queues = load_all_queues(beads_dir)
 
     if not all_queues:

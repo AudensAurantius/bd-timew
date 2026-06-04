@@ -18,12 +18,12 @@ from pathlib import Path
 
 import yaml
 
-from bd_track.util import root_log, run
+from bd_track.util import path_compat, root_log, run
 
 
 def load_sidecar(beads_dir: Path) -> dict:
-    """Load ``.beads/bd-track.yaml``; warn and return minimal defaults if absent."""
-    path = beads_dir / "bd-track.yaml"
+    """Load ``.beads/bd-track.yaml`` (legacy ``bd-timew.yaml`` fallback); warn if absent."""
+    path = path_compat(beads_dir / "bd-track.yaml", beads_dir / "bd-timew.yaml")
     if not path.exists():
         root_log.warning(
             "no sidecar at %s; using minimal defaults. "
