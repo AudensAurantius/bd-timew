@@ -254,6 +254,30 @@ def get_cli_arguments() -> argparse.Namespace:
         help="Skip the post-stop queue sweep for closed/deferred beads.",
     )
 
+    # -- show ----------------------------------------------------------------
+    p_show = sub.add_parser(
+        "show",
+        help="Show the effective state of a single interval after folding all its events.",
+        description=(
+            "Locate an interval by ULID (or unique 8-character prefix), fold its "
+            "start/stop/correction/cancel events, and display the result. Useful "
+            "for verifying amend corrections or inspecting a specific interval's "
+            "history."
+        ),
+        formatter_class=HelpFormatter,
+    )
+    p_show.add_argument("interval_id", metavar="<interval-id>",
+                        help="Full interval ULID or unique 8-character prefix.")
+    p_show.add_argument(
+        "--format", dest="fmt", default="table",
+        choices=("table", "json", "yaml", "csv", "tsv"),
+        help="Output format (default: table).",
+    )
+    p_show.add_argument(
+        "--pretty", action="store_true", default=False,
+        help="2-space indent for JSON output; no-op for other formats.",
+    )
+
     # -- cancel --------------------------------------------------------------
     p_cancel = sub.add_parser(
         "cancel",
@@ -671,6 +695,12 @@ def main() -> None:
     elif args.cmd == "stop":
         from bd_track.track import cmd_stop
         cmd_stop(args.issue_id, clean=args.clean, session_id=args.session_id, at=args.at)
+    elif args.cmd == "show":
+        from bd_track.track import cmd_show
+        cmd_show(args.interval_id, fmt=args.fmt, pretty=args.pretty,
+                 session_id=args.session_id,
+                 project_dir=_resolve_project_scope(args),
+                 global_scope=args.global_scope)
     elif args.cmd == "cancel":
         from bd_track.track import cmd_cancel
         cmd_cancel(args.interval_id, yes=args.yes, session_id=args.session_id,

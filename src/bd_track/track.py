@@ -214,6 +214,97 @@ def cmd_switch(issue_id: str, *, from_issue_id: str | None = None,
 
 
 # ---------------------------------------------------------------------------
+# show
+# ---------------------------------------------------------------------------
+
+def _find_interval(interval_id: str, roots: list[Path]) -> "tuple[str, Interval]":
+    """Locate an interval by full ULID or unique prefix across project roots."""
+    prefix = interval_id.upper()
+    matches: dict[str, Interval] = {}
+    for root in roots:
+        for iv in load_intervals(log_dir(root)):
+            if iv.interval.startswith(prefix):
+                matches[iv.interval] = iv
+    if not matches:
+        root_log.error("interval %s not found", interval_id)
+        sys.exit(1)
+    if len(matches) > 1:
+        root_log.error("interval prefix %s is ambiguous (%d matches)", interval_id, len(matches))
+        sys.exit(1)
+    return next(iter(matches.items()))
+
+
+def _interval_to_dict(iv: "Interval") -> dict:
+    return {
+        "interval": iv.interval,
+        "status": iv.status,
+        "bead": iv.bead,
+        "session": iv.session,
+        "start": iv.start,
+        "stop": iv.stop,
+        "duration": str(iv.duration) if iv.stop else None,
+        "tags": iv.tags,
+        "actor": iv.actor,
+        "role": iv.role,
+        "group_id": iv.group_id,
+    }
+
+
+def cmd_show(
+    interval_id: str,
+    *,
+    fmt: str = "table",
+    pretty: bool = False,
+    session_id: str | None = None,
+    project_dir: Path | None = None,
+    global_scope: bool = False,
+) -> None:
+    """Show effective interval state after folding all its events."""
+    roots = _project_roots(project_dir, global_scope)
+    _, iv = _find_interval(interval_id, roots)
+    data = _interval_to_dict(iv)
+
+    if fmt == "json":
+        import json
+        indent = 2 if pretty else None
+        print(json.dumps(data, indent=indent, ensure_ascii=False))
+        return
+
+    if fmt == "yaml":
+        import yaml
+        print(yaml.dump(data, default_flow_style=False, allow_unicode=True), end="")
+        return
+
+    if fmt in ("csv", "tsv"):
+        import csv, io
+        sep = "\t" if fmt == "tsv" else ","
+        buf = io.StringIO()
+        w = csv.writer(buf, delimiter=sep)
+        w.writerow(data.keys())
+        w.writerow([
+            "|".join(v) if isinstance(v, list) else ("" if v is None else str(v))
+            for v in data.values()
+        ])
+        print(buf.getvalue(), end="")
+        return
+
+    # table (default) — Rich
+    from rich.console import Console
+    from rich.table import Table
+    console = Console()
+    table = Table(show_header=False, box=None, padding=(0, 1))
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    for key, val in data.items():
+        if isinstance(val, list):
+            display = ", ".join(val) if val else "(none)"
+        else:
+            display = str(val) if val is not None else "(none)"
+        table.add_row(key, display)
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
 # cancel
 # ---------------------------------------------------------------------------
 
