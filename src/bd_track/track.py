@@ -14,6 +14,7 @@ old one") without ever reaching across sessions — the property timew lacked.
 from __future__ import annotations
 
 import datetime as dt
+import sys
 from pathlib import Path
 
 from bd_track.aggregate import (
@@ -138,12 +139,15 @@ def cmd_start(issue_id: str, *, dry_run: bool = False, session_id: str | None = 
 
 
 def cmd_stop(issue_id: str | None = None, *, clean: bool = True,
-             session_id: str | None = None) -> None:
+             session_id: str | None = None, at: str | None = None) -> None:
     """Append a ``stop`` event for this session's open interval(s).
 
     With ``issue_id`` given, stops only the interval(s) tagged with that bead.
     Unlike the old timew backend, a no-argument stop can *never* reach another
     session's interval — it only closes ULIDs in the caller's own session log.
+
+    ``at`` overrides the stop timestamp (natural language or ISO-8601 string).
+    Must be in the past and after the interval's own start time.
 
     When ``clean`` is True (default), sweeps closed/deferred beads from queue
     scopes afterward (``--no-clean`` to skip).
@@ -152,14 +156,39 @@ def cmd_stop(issue_id: str | None = None, *, clean: bool = True,
     sid = resolve_session_id(project_root, explicit=session_id)
     record_activity(str(project_root.resolve()))
 
+    at_dt: dt.datetime | None = None
+    if at is not None:
+        from bd_track.util import parse_datetime
+        try:
+            at_dt = parse_datetime(at)
+        except ValueError as exc:
+            root_log.error("--at: %s", exc)
+            sys.exit(1)
+        if at_dt > dt.datetime.now().astimezone():
+            root_log.error("--at timestamp is in the future: %s", at_dt.isoformat())
+            sys.exit(1)
+
     opens = _session_open(sid, project_root, bead=issue_id)
     if not opens:
         scope = f" for {issue_id}" if issue_id else ""
         root_log.info("no active interval%s in this session (%s)", scope, sid)
     for iv in opens:
-        stop_interval(iv.interval, session_id=sid, project_dir=project_root)
+        if at_dt is not None and iv.start is not None:
+            start_dt = dt.datetime.fromisoformat(iv.start)
+            if at_dt < start_dt:
+                root_log.error(
+                    "--at %s is before interval start %s",
+                    at_dt.isoformat(), iv.start,
+                )
+                sys.exit(1)
+        ts = at_dt.isoformat(timespec="seconds") if at_dt is not None else None
+        stop_interval(iv.interval, session_id=sid, project_dir=project_root, ts=ts)
+        if at_dt is not None and iv.start is not None:
+            elapsed = _format_duration(at_dt - dt.datetime.fromisoformat(iv.start))
+        else:
+            elapsed = _elapsed(iv.start)
         root_log.info("Stopped %s  %s  (%s)", iv.bead or "(no bead)",
-                      iv.interval[:8], _elapsed(iv.start))
+                      iv.interval[:8], elapsed)
 
     if clean:
         from bd_track.queue import cmd_clean

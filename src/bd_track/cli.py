@@ -245,6 +245,11 @@ def get_cli_arguments() -> argparse.Namespace:
         help="Stop only the interval tagged with this bead ID (recommended).",
     )
     p_stop.add_argument(
+        "--at", metavar="<datetime>", default=None,
+        help="Override stop timestamp (natural language or ISO-8601; "
+             "must be in the past and after the interval's start time).",
+    )
+    p_stop.add_argument(
         "--no-clean", action="store_false", dest="clean", default=True,
         help="Skip the post-stop queue sweep for closed/deferred beads.",
     )
@@ -592,7 +597,7 @@ def main() -> None:
         cmd_start(args.issue_id, session_id=args.session_id)
     elif args.cmd == "stop":
         from bd_track.track import cmd_stop
-        cmd_stop(args.issue_id, clean=args.clean, session_id=args.session_id)
+        cmd_stop(args.issue_id, clean=args.clean, session_id=args.session_id, at=args.at)
     elif args.cmd == "switch":
         from bd_track.track import cmd_switch
         cmd_switch(args.issue_id, from_issue_id=args.from_issue_id,

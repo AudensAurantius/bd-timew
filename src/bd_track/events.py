@@ -142,10 +142,17 @@ def start_interval(
     return interval
 
 
-def stop_interval(interval: str, *, session_id: str, project_dir: Path | None = None) -> None:
-    """Append a ``stop`` event for ``interval`` (closes it on aggregation)."""
-    append_event(_base_event("stop", interval, session_id),
-                 session_id=session_id, project_dir=project_dir)
+def stop_interval(interval: str, *, session_id: str,
+                  ts: str | None = None,
+                  project_dir: Path | None = None) -> None:
+    """Append a ``stop`` event for ``interval`` (closes it on aggregation).
+
+    ``ts`` overrides the default now() timestamp — used by ``stop --at``.
+    """
+    event = _base_event("stop", interval, session_id)
+    if ts is not None:
+        event["ts"] = ts
+    append_event(event, session_id=session_id, project_dir=project_dir)
 
 
 def cancel_interval(interval: str, *, session_id: str, project_dir: Path | None = None) -> None:
