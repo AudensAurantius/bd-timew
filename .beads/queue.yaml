@@ -1,14 +1,7 @@
 architecture:
 - bd-timew-7o3
 - bd-timew-6g4
-cli-enhancements:
-- bd-timew-pvu
-- bd-timew-y5p
-- bd-timew-gpt
-- bd-timew-9kn
 cutover:
 - bd-timew-cjq
 - bd-timew-a33
 - bd-timew-ive
-refactor:
-- bd-timew-4g4
