@@ -337,6 +337,13 @@ def cmd_init_project(
     # very write triggers the auto-push and hangs.
     _ensure_auto_push_disabled(beads_dir)
 
+    sidecar = beads_dir / "bd-track.yaml"
+    if not sidecar.exists():
+        sidecar.write_text(render("sidecar/bd-track.yaml.tmpl"))
+        root_log.info("Created %s — edit it to map bead labels to billing tuple values.", sidecar)
+    else:
+        root_log.debug("Sidecar already exists at %s, skipping scaffold.", sidecar)
+
     config = load_repos_config()
     existing_entry = _get_repo_entry(config, project_path)
     if existing_entry is not None:
